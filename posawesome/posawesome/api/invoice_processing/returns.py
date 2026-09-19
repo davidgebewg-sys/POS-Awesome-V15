@@ -253,9 +253,12 @@ def compute_original_refundable_cash(doctype, invoice_name):
             "docstatus": 1,
             "is_return": 1,
         },
-        fields=["sum(grand_total) as total"],
+        fields=["grand_total"],
     )
-    returned_total = abs(flt(returned[0].get("total"))) if returned else 0.0
+    # Keep this compatible with both Frappe v15 and newer query parsers. Newer
+    # versions reject SQL functions supplied as strings, while older v15
+    # versions interpret aggregate dictionaries as child-table field queries.
+    returned_total = abs(sum(flt(row.get("grand_total")) for row in returned))
     refundable = (
         flt(original.get("grand_total"))
         - flt(original.get("outstanding_amount"))

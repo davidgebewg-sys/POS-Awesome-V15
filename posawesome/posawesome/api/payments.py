@@ -578,6 +578,11 @@ def repair_overpayment_change_allocations(
         invoice_filters["customer"] = customer
     if posting_date:
         invoice_filters["posting_date"] = posting_date
+    if invoice_names:
+        # Apply the requested scope before the query limit. Filtering the names
+        # in Python after get_all meant a selected recent invoice disappeared
+        # whenever older repair candidates filled the limited result set.
+        invoice_filters["name"] = ["in", sorted(invoice_names)]
 
     candidate_invoices = frappe.get_all(
         invoice_doctype,
@@ -596,9 +601,6 @@ def repair_overpayment_change_allocations(
         order_by="posting_date asc, name asc",
         limit_page_length=limit,
     )
-
-    if invoice_names:
-        candidate_invoices = [row for row in candidate_invoices if _row_value(row, "name") in invoice_names]
 
     matched = []
     repaired = []

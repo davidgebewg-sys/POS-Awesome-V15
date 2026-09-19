@@ -102,13 +102,17 @@ def _install_stubs():
                     return False
                 if operator == "<" and not actual < value:
                     return False
+                if operator == "in" and actual not in value:
+                    return False
             elif actual != expected:
                 return False
         return True
 
     def _get_all(doctype, filters=None, fields=None, **kwargs):
         rows = list(get_all_responses.get(doctype, []))
-        return [row for row in rows if _matches_filters(row, filters or {})]
+        rows = [row for row in rows if _matches_filters(row, filters or {})]
+        limit = kwargs.get("limit_page_length")
+        return rows[:limit] if limit else rows
 
     frappe_module.get_all = _get_all
 
@@ -378,6 +382,64 @@ class TestRedeemingCustomerCredit(unittest.TestCase):
         self.assertEqual(result["repaired"], [])
         self.assertEqual(result["skipped"], [])
         self.assertEqual(self.reconcile_calls, [])
+
+    def test_repair_overpayment_change_allocations_filters_requested_invoice_before_limit(self):
+        common_invoice_fields = {
+            "customer": "zzz",
+            "company": "Farooq Chemicals",
+            "posting_date": "2026-04-04",
+            "outstanding_amount": -2160,
+            "change_amount": 2160,
+            "base_change_amount": 2160,
+            "posa_pos_opening_shift": "POSA-OS-26-0000007",
+            "account_for_change_amount": "1110 - Cash - FC",
+            "is_pos": 1,
+            "is_return": 0,
+            "docstatus": 1,
+        }
+        self.get_all_responses["Sales Invoice"] = [
+            types.SimpleNamespace(name="ACC-SINV-OLDER", **common_invoice_fields),
+            types.SimpleNamespace(name="ACC-SINV-SELECTED", **common_invoice_fields),
+        ]
+        self.get_all_responses["Payment Entry"] = [
+            types.SimpleNamespace(
+                name="ACC-PAY-SELECTED",
+                paid_amount=2160,
+                unallocated_amount=2160,
+                paid_from="1110 - Cash - FC",
+                reference_no="POSA-OS-26-0000007",
+                posting_date="2026-04-04",
+                payment_type="Pay",
+                party_type="Customer",
+                party="zzz",
+                company="Farooq Chemicals",
+                docstatus=1,
+            )
+        ]
+        payment_doc = FakePaymentEntry()
+        payment_doc.name = "ACC-PAY-SELECTED"
+        payment_doc.paid_from = "1110 - Cash - FC"
+        payment_doc.cost_center = "Main - FC"
+        self.get_doc_responses[("Payment Entry", "ACC-PAY-SELECTED")] = payment_doc
+
+        result = self.payments_module.repair_overpayment_change_allocations(
+            invoice_names=["ACC-SINV-SELECTED"],
+            dry_run=1,
+            limit=1,
+        )
+
+        self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(
+            result["matched"],
+            [
+                {
+                    "invoice": "ACC-SINV-SELECTED",
+                    "payment_entry": "ACC-PAY-SELECTED",
+                    "allocated_amount": 2160.0,
+                }
+            ],
+        )
+        self.assertEqual(result["skipped"], [])
 
     def test_repair_overpayment_change_allocations_reconciles_exact_match(self):
         self.get_all_responses["Sales Invoice"] = [

@@ -2836,16 +2836,17 @@ export default {
 								Number(invoice?.outstanding_amount || 0) < 0,
 						);
 			if (!matchesRepairPattern) return null;
-			if (this.repairCandidateScopeReady) {
-				if (
-					Array.isArray(this.repairedChangeAllocationInvoiceNames) &&
-					this.repairedChangeAllocationInvoiceNames.includes(invoice?.name)
-				) {
-					return "repaired";
-				}
-				return "candidate";
+			if (!this.repairCandidateScopeReady) return null;
+			if (
+				Array.isArray(this.repairedChangeAllocationInvoiceNames) &&
+				this.repairedChangeAllocationInvoiceNames.includes(invoice?.name)
+			) {
+				return null;
 			}
-			return "candidate";
+			return Array.isArray(this.repairCandidateInvoiceNames) &&
+				this.repairCandidateInvoiceNames.includes(invoice?.name)
+				? "candidate"
+				: null;
 		},
 		repairStateLabel(state) {
 			if (state === "repaired") return __("Repaired");

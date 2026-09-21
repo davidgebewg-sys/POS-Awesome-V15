@@ -150,6 +150,35 @@ class TestExchangeValidation(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "did not close correctly"):
             self.exchange._validate_final_settlement(return_doc, sale_doc, 1500, 1600)
 
+    def test_accepts_submitted_return_and_replacement_documents(self):
+        return_doc = AttrDict(is_return=1, return_against="SINV-0001")
+        sale_doc = AttrDict(is_return=0)
+        self.exchange._validate_submitted_exchange_documents(
+            return_doc,
+            sale_doc,
+            "SINV-0001",
+        )
+
+    def test_rejects_exchange_when_return_document_is_a_normal_sale(self):
+        return_doc = AttrDict(is_return=0, return_against="SINV-0001")
+        sale_doc = AttrDict(is_return=0)
+        with self.assertRaisesRegex(ValueError, "not created as a return invoice"):
+            self.exchange._validate_submitted_exchange_documents(
+                return_doc,
+                sale_doc,
+                "SINV-0001",
+            )
+
+    def test_rejects_exchange_when_return_link_is_wrong(self):
+        return_doc = AttrDict(is_return=1, return_against="SINV-OTHER")
+        sale_doc = AttrDict(is_return=0)
+        with self.assertRaisesRegex(ValueError, "not linked"):
+            self.exchange._validate_submitted_exchange_documents(
+                return_doc,
+                sale_doc,
+                "SINV-0001",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -33,10 +33,10 @@
 						<strong>{{ __("Exchange settlement") }}</strong>
 						<span>
 							{{ __("Replacement sale") }} {{ currencySymbol(invoice_doc.currency)
-							}}{{ formatCurrency(invoice_doc.rounded_total || invoice_doc.grand_total) }}
-							• {{ __("Return credit") }} {{ currencySymbol(invoice_doc.currency)
-							}}{{ formatCurrency(exchangeSession.returnTotal) }}
-							• {{ exchangeSettlementLabel }} {{ currencySymbol(invoice_doc.currency)
+							}}{{ formatCurrency(invoice_doc.rounded_total || invoice_doc.grand_total) }} •
+							{{ __("Return credit") }} {{ currencySymbol(invoice_doc.currency)
+							}}{{ formatCurrency(exchangeSession.returnTotal) }} •
+							{{ exchangeSettlementLabel }} {{ currencySymbol(invoice_doc.currency)
 							}}{{ formatCurrency(exchangeSettlementAmount) }}
 						</span>
 					</v-alert>
@@ -63,6 +63,10 @@
 							:formatCurrency="formatCurrency"
 							:gift-card-applied-amount="giftCardAppliedAmount"
 							:gift-card-code="giftCardRedemptions[0]?.gift_card_code || ''"
+							:exchange-active="exchangeSession?.stage === 'sale'"
+							:exchange-credit="Number(exchangeSession?.returnTotal || 0)"
+							:exchange-settlement-amount="exchangeSettlementAmount"
+							:exchange-settlement-label="exchangeSettlementLabel"
 							@show-paid-amount="showPaidAmount"
 							@show-diff-payment="showDiffPayment"
 							@show-paid-change="showPaidChange"
@@ -734,10 +738,7 @@ const netCompanySettlementAmount = computed(() => {
 		Number(doc.loyalty_amount || loyalty_amount.value || 0) +
 		Number(redeemed_customer_credit.value || 0) +
 		toCompanyCurrency(paymentCurrencyContext(doc), giftCardInvoiceAmount);
-	const net = flt(
-		companyTotal - exchangeCreditCompany - coveredCompanyAmount,
-		currency_precision.value,
-	);
+	const net = flt(companyTotal - exchangeCreditCompany - coveredCompanyAmount, currency_precision.value);
 	return doc.is_return ? Math.min(net, 0) : Math.max(net, 0);
 });
 

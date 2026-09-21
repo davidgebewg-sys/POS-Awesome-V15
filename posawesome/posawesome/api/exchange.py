@@ -199,6 +199,15 @@ def _validate_final_settlement(return_doc, sale_doc, return_total, sale_total):
         )
 
 
+def _validate_submitted_exchange_documents(return_doc, sale_doc, expected_return_against):
+    if not cint(return_doc.get("is_return")):
+        frappe.throw(_("Exchange return document was not created as a return invoice."))
+    if cstr(return_doc.get("return_against")) != cstr(expected_return_against):
+        frappe.throw(_("Exchange return invoice is not linked to the selected original invoice."))
+    if cint(sale_doc.get("is_return")):
+        frappe.throw(_("Exchange replacement document was incorrectly created as a return invoice."))
+
+
 @frappe.whitelist()
 def submit_item_exchange(
     return_invoice,
@@ -269,6 +278,12 @@ def submit_item_exchange(
 
     if cint(return_doc.docstatus) != 1 or cint(sale_doc.docstatus) != 1:
         frappe.throw(_("Both exchange invoices must be submitted synchronously."))
+
+    _validate_submitted_exchange_documents(
+        return_doc,
+        sale_doc,
+        return_payload.get("return_against"),
+    )
 
     return_doc.reload()
     sale_doc.reload()

@@ -259,20 +259,21 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 		while (true) {
 			try {
 				const exchange = unref(options.exchangeSession);
-				const result = exchange?.stage === "sale" && exchange?.returnDoc
-					? await invoiceService.submitExchange(
-						data,
-						submissionDoc,
-						exchange.returnDoc,
-						profile,
-						exchange.clientRequestId,
-					)
-					: await invoiceService.submitInvoice(
-						data,
-						submissionDoc,
-						type,
-						profile,
-					);
+				const result =
+					exchange?.stage === "sale" && exchange?.returnDoc
+						? await invoiceService.submitExchange(
+								data,
+								submissionDoc,
+								exchange.returnDoc,
+								profile,
+								exchange.clientRequestId,
+							)
+						: await invoiceService.submitInvoice(
+								data,
+								submissionDoc,
+								type,
+								profile,
+							);
 				unwrapApiResult(result);
 				return result;
 			} catch (error) {
@@ -513,7 +514,11 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 				(row?._posa_rate_error || !Number(row?.exchange_rate)),
 		);
 		if (invalidPaymentRate || invalidChangeRate) {
-			frappe.throw(__("Resolve all payment and change exchange rates before submitting."));
+			frappe.throw(
+				__(
+					"Resolve all payment and change exchange rates before submitting.",
+				),
+			);
 		}
 
 		const storeItemsSource = stores?.invoiceStore?.items;
@@ -525,10 +530,17 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 		const saleFloorPolicy = resolveSaleFloorPolicy(profile);
 		const invoiceGrossAmount = (doc?.items || []).reduce(
 			(total: number, item: any) => {
-				if (item?.is_return || item?.posa_is_replace || Number(item?.qty || 0) <= 0) {
+				if (
+					item?.is_return ||
+					item?.posa_is_replace ||
+					Number(item?.qty || 0) <= 0
+				) {
 					return total;
 				}
-				return total + Math.abs(Number(item?.rate || 0) * Number(item?.qty || 0));
+				return (
+					total +
+					Math.abs(Number(item?.rate || 0) * Number(item?.qty || 0))
+				);
 			},
 			0,
 		);
@@ -538,11 +550,12 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 		);
 		const fixedInvoiceDiscountPercentage =
 			explicitInvoiceDiscount <= 0 && invoiceGrossAmount > 0
-				? (Math.max(Number(doc?.discount_amount || 0), 0) / invoiceGrossAmount) * 100
+				? (Math.max(Number(doc?.discount_amount || 0), 0) /
+						invoiceGrossAmount) *
+					100
 				: 0;
 		const lossOptions = {
-			minimumMarginPercentage:
-				saleFloorPolicy.minimumMarginPercentage,
+			minimumMarginPercentage: saleFloorPolicy.minimumMarginPercentage,
 			invoiceDiscountPercentage:
 				explicitInvoiceDiscount || fixedInvoiceDiscountPercentage,
 		};
@@ -599,10 +612,12 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 					!doc.posa_below_cost_override ||
 					!String(doc.posa_below_cost_override_reason || "").trim()
 				) {
-					const approval = await options.requestBelowCostOverride?.(
-						lossRiskItems,
-					);
-					if (!approval?.approved || !String(approval.reason || "").trim()) {
+					const approval =
+						await options.requestBelowCostOverride?.(lossRiskItems);
+					if (
+						!approval?.approved ||
+						!String(approval.reason || "").trim()
+					) {
 						throw new Error(
 							__(
 								"This sale is below the permitted floor and requires a POS supervisor override.",
@@ -615,17 +630,17 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 					).trim();
 				}
 			} else {
-			throw new Error(
-				__(
-					"Cannot submit invoice because {0} is selling at {1}, below {2} {3}.",
-					[
-						first.itemName || first.itemCode,
-						formatFloat(first.sellingRate, prec),
-						first.costLabel,
-						formatFloat(first.costRate, prec),
-					],
-				),
-			);
+				throw new Error(
+					__(
+						"Cannot submit invoice because {0} is selling at {1}, below {2} {3}.",
+						[
+							first.itemName || first.itemCode,
+							formatFloat(first.sellingRate, prec),
+							first.costLabel,
+							formatFloat(first.costRate, prec),
+						],
+					),
+				);
 			}
 		}
 
@@ -683,12 +698,22 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			);
 		}
 
-		const rawInvoiceTotal = formatFloat(doc.rounded_total || doc.grand_total, prec);
+		const rawInvoiceTotal = formatFloat(
+			doc.rounded_total || doc.grand_total,
+			prec,
+		);
 		const invoice_total = doc.is_return
 			? rawInvoiceTotal
 			: formatFloat(
 					Math.max(
-						rawInvoiceTotal - Math.max(0, formatFloat(doc.posa_exchange_credit || 0, prec)),
+						rawInvoiceTotal -
+							Math.max(
+								0,
+								formatFloat(
+									doc.posa_exchange_credit || 0,
+									prec,
+								),
+							),
 						0,
 					),
 					prec,
@@ -1331,6 +1356,23 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			}
 
 			if (!waitForInvoiceProcessing) {
+				const exchangeSummary = r.message?.exchange_summary;
+				const exchangeDifference = formatFloat(
+					exchangeSummary?.difference_amount || 0,
+					unref(options.currencyPrecision) || 2,
+				);
+				const exchangeDetail =
+					exchangeDifference > 0
+						? __("Customer paid {0} {1}", [
+								doc?.currency || "",
+								Math.abs(exchangeDifference),
+							])
+						: exchangeDifference < 0
+							? __("{0} {1} remains as customer credit", [
+									doc?.currency || "",
+									Math.abs(exchangeDifference),
+								])
+							: __("Even exchange - no payment collected");
 				const submittedDocumentType = resolvePosDocumentDoctype({
 					invoiceType: type,
 					posProfile: profile,
@@ -1348,24 +1390,39 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 									responseInvoiceName,
 								]);
 				stores?.toastStore?.show(
-					hasPostSubmitPaymentWork
+					isExchangeSubmission
 						? {
 								key: `invoice-processing::${responseInvoiceName}`,
-								title: __("Invoice Submitted"),
-								summary: submittedTitle,
-								detail: __(
-									"Processing payment entries for Invoice {0}",
-									[responseInvoiceName],
+								title: __("Item exchange completed"),
+								summary: __(
+									"Return {0} and replacement {1} submitted",
+									[
+										r.message?.return_invoice || "",
+										r.message?.replacement_invoice ||
+											responseInvoiceName,
+									],
 								),
-								color: "info",
-								timeout: -1,
-								loading: true,
-							}
-						: {
-								key: `invoice-processing::${responseInvoiceName}`,
-								title: submittedTitle,
+								detail: exchangeDetail,
 								color: "success",
-							},
+							}
+						: hasPostSubmitPaymentWork
+							? {
+									key: `invoice-processing::${responseInvoiceName}`,
+									title: __("Invoice Submitted"),
+									summary: submittedTitle,
+									detail: __(
+										"Processing payment entries for Invoice {0}",
+										[responseInvoiceName],
+									),
+									color: "info",
+									timeout: -1,
+									loading: true,
+								}
+							: {
+									key: `invoice-processing::${responseInvoiceName}`,
+									title: submittedTitle,
+									color: "success",
+								},
 				);
 			}
 
@@ -1380,11 +1437,17 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			stockCoordinator.applyInvoiceConsumption(submittedItems, {
 				source: "invoice",
 			});
-			if (isExchangeSubmission && Array.isArray(r.message?.return_invoice_doc?.items)) {
+			if (
+				isExchangeSubmission &&
+				Array.isArray(r.message?.return_invoice_doc?.items)
+			) {
 				updateLocalStock(r.message.return_invoice_doc.items);
-				stockCoordinator.applyInvoiceConsumption(r.message.return_invoice_doc.items, {
-					source: "exchange-return",
-				});
+				stockCoordinator.applyInvoiceConsumption(
+					r.message.return_invoice_doc.items,
+					{
+						source: "exchange-return",
+					},
+				);
 			}
 			const submittedCodes = submittedItems
 				.map((item) => (item ? item.item_code : null))

@@ -438,7 +438,7 @@ Notes:
 - **Cash Movement**: Profile-controlled POS expenses and cash deposits with closing-shift impact.
 - **Customer Balance**: Option to display current customer balance on the main screen.
 - **Address Management**: Manage multiple shipping addresses for customers.
-- **ERPNext v15 Support**: Fully compatible with the latest ERPNext version.
+- **ERPNext v15 and v16 Support**: Supported on both ERPNext/Frappe 15 and 16 runtimes.
 
 ### Shortcuts:
 

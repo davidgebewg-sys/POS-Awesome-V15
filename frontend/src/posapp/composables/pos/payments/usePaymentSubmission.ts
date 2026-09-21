@@ -48,6 +48,7 @@ export interface PaymentSubmissionOptions {
 	requestBelowCostOverride?: (
 		_risks: any[],
 	) => Promise<{ approved: boolean; reason?: string } | null>;
+	exchangeSession?: Ref<any | null>;
 	stores?: {
 		toastStore?: any;
 		syncStore?: any;
@@ -257,12 +258,21 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 	) => {
 		while (true) {
 			try {
-				const result = await invoiceService.submitInvoice(
-					data,
-					submissionDoc,
-					type,
-					profile,
-				);
+				const exchange = unref(options.exchangeSession);
+				const result = exchange?.stage === "sale" && exchange?.returnDoc
+					? await invoiceService.submitExchange(
+						data,
+						submissionDoc,
+						exchange.returnDoc,
+						profile,
+						exchange.clientRequestId,
+					)
+					: await invoiceService.submitInvoice(
+						data,
+						submissionDoc,
+						type,
+						profile,
+					);
 				unwrapApiResult(result);
 				return result;
 			} catch (error) {
@@ -673,10 +683,16 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			);
 		}
 
-		const invoice_total = formatFloat(
-			doc.rounded_total || doc.grand_total,
-			prec,
-		);
+		const rawInvoiceTotal = formatFloat(doc.rounded_total || doc.grand_total, prec);
+		const invoice_total = doc.is_return
+			? rawInvoiceTotal
+			: formatFloat(
+					Math.max(
+						rawInvoiceTotal - Math.max(0, formatFloat(doc.posa_exchange_credit || 0, prec)),
+						0,
+					),
+					prec,
+				);
 		const effective_total_payments = formatFloat(
 			current_total_payments + writeOffAmount,
 			prec,
@@ -1044,6 +1060,10 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 		}
 
 		const submissionDoc = buildSubmissionInvoiceDoc(doc);
+		const activeExchange = unref(options.exchangeSession);
+		const isExchangeSubmission = Boolean(
+			activeExchange?.stage === "sale" && activeExchange?.returnDoc,
+		);
 
 		const data = {
 			total_change: changeLimit,
@@ -1064,6 +1084,7 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 				(row: any) => formatFloat(row?.amount || 0, prec) > 0,
 			);
 		const hasPostSubmitPaymentWork =
+			!isExchangeSubmission &&
 			Boolean(profile?.posa_allow_submissions_in_background_job) &&
 			(formatFloat(unref(redeemedCustomerCredit) || 0, prec) > 0 ||
 				hasGiftCardRedemption ||
@@ -1111,15 +1132,15 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 		try {
 			await validateStockBeforeOnlineSubmission(doc, profile, type);
 			const intent = { data, invoice: submissionDoc };
-			persistInvoiceIntentJournal(intent);
-			const outboxPersistPromise = enqueueInvoiceOutboxEntry(
-				intent,
-			).catch((error) => {
-				console.warn(
-					"Invoice intent remains in the synchronous recovery journal",
-					error,
-				);
-			});
+			if (!isExchangeSubmission) persistInvoiceIntentJournal(intent);
+			const outboxPersistPromise = isExchangeSubmission
+				? Promise.resolve()
+				: enqueueInvoiceOutboxEntry(intent).catch((error) => {
+						console.warn(
+							"Invoice intent remains in the synchronous recovery journal",
+							error,
+						);
+					});
 			if (typeof window !== "undefined") {
 				window.dispatchEvent(
 					new CustomEvent("posa:invoice-submit-dispatched", {
@@ -1178,7 +1199,7 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 				docstatus === 1 ||
 				status === 1 ||
 				(docstatus === undefined && status === undefined);
-			if (wasSubmitted) {
+			if (wasSubmitted && !isExchangeSubmission) {
 				void outboxPersistPromise.then(() =>
 					removeInvoiceOutboxEntry(
 						submissionDoc.posa_client_request_id,
@@ -1191,6 +1212,7 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 				);
 			}
 			const waitForInvoiceProcessing =
+				!isExchangeSubmission &&
 				Boolean(profile?.posa_allow_submissions_in_background_job) &&
 				!wasSubmitted;
 			const submittedDoctype =
@@ -1358,6 +1380,12 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			stockCoordinator.applyInvoiceConsumption(submittedItems, {
 				source: "invoice",
 			});
+			if (isExchangeSubmission && Array.isArray(r.message?.return_invoice_doc?.items)) {
+				updateLocalStock(r.message.return_invoice_doc.items);
+				stockCoordinator.applyInvoiceConsumption(r.message.return_invoice_doc.items, {
+					source: "exchange-return",
+				});
+			}
 			const submittedCodes = submittedItems
 				.map((item) => (item ? item.item_code : null))
 				.filter((code) => code !== undefined && code !== null);

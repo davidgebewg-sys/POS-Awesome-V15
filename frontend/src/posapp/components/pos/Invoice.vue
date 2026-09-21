@@ -28,6 +28,17 @@
 		>
 			<!-- Dynamic padding wrapper -->
 			<div class="dynamic-padding">
+				<ExchangeStatusPanel
+					v-if="exchangeSession"
+					:stage="exchangeSession.stage"
+					:return-total="exchangeSession.returnTotal || Math.abs(subtotal || 0)"
+					:sale-total="exchangeSession.stage === 'sale' ? Math.abs(subtotal || 0) : 0"
+					:currency-symbol="currencySymbol(displayCurrency)"
+					:format-amount="(value) => formatCurrency(value, displayCurrency)"
+					:continuing="exchangeContinuing"
+					@continue="continueExchangeToSale"
+					@cancel="cancelExchange"
+				/>
 				<v-alert
 					type="info"
 					density="compact"
@@ -305,6 +316,7 @@ import PackedItemsDialog from "./invoice/PackedItemsDialog.vue";
 import PaymentConfirmationDialog from "./payments/PaymentConfirmationDialog.vue";
 import PriceListRateDialog from "./invoice/PriceListRateDialog.vue";
 import ItemQuickEditDialog from "./items/ItemQuickEditDialog.vue";
+import ExchangeStatusPanel from "./exchange/ExchangeStatusPanel.vue";
 import { resolveItemQuickEditCodeFromRows } from "./invoice/itemQuickEditSelection";
 import invoiceItemMethods from "./invoice/invoiceItemMethods";
 import invoiceComputed from "./invoice/invoiceComputed";
@@ -372,6 +384,7 @@ export default {
 			invoiceType,
 			flowToLoad,
 			flowContext,
+			exchangeSession,
 		} = storeToRefs(invoiceStore);
 		const itemsTableRef = ref(null);
 		const currencyState = useInvoiceCurrency({}, {});
@@ -414,6 +427,7 @@ export default {
 			invoiceType,
 			flowToLoad,
 			flowContext,
+			exchangeSession,
 			itemsTableRef,
 			...currencyState,
 			...itemActions,
@@ -467,6 +481,7 @@ export default {
 			price_list_rate_dialog_resolver: null,
 			item_quick_edit_open: false,
 			item_quick_edit_item_code: "",
+			exchangeContinuing: false,
 		};
 	},
 
@@ -483,6 +498,7 @@ export default {
 		PaymentConfirmationDialog,
 		PriceListRateDialog,
 		ItemQuickEditDialog,
+		ExchangeStatusPanel,
 	},
 	computed: {
 		isCounterGridPresentation() {
@@ -1135,6 +1151,15 @@ export default {
 		},
 		handleLoadReturnInvoice(data) {
 			this.load_invoice(data.invoice_doc);
+			if (data.exchange_mode) {
+				this.invoiceStore.startExchange({
+					originalInvoice: data.return_doc,
+					clientRequestId:
+						typeof crypto !== "undefined" && crypto.randomUUID
+							? crypto.randomUUID()
+							: `exchange-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+				});
+			}
 			this.invoiceType = "Return";
 			this.invoiceTypes = ["Return"];
 			this.invoice_doc.is_return = 1;
@@ -1214,6 +1239,56 @@ export default {
 				this.additional_discount = 0;
 				this.additional_discount_percentage = 0;
 			}
+		},
+		async continueExchangeToSale() {
+			if (!this.exchangeSession || this.exchangeSession.stage !== "return") return;
+			if (!this.isOnline) {
+				this.toastStore.show({
+					title: __("Item exchanges require an online connection."),
+					color: "error",
+				});
+				return;
+			}
+			if (!this.items.length) {
+				this.toastStore.show({ title: __("Select at least one item to return."), color: "error" });
+				return;
+			}
+
+			this.exchangeContinuing = true;
+			try {
+				if (this.ensure_auto_batch_selection) await this.ensure_auto_batch_selection();
+				if (this.validate && !(await this.validate())) return;
+
+				const customer = this.customer || this.invoice_doc?.customer;
+				const returnDoc = this.get_invoice_doc();
+				returnDoc.is_return = 1;
+				returnDoc.is_pos = 0;
+				returnDoc.payments = (returnDoc.payments || []).map((payment) => ({
+					...payment,
+					amount: 0,
+					base_amount: 0,
+				}));
+				this.invoiceStore.setExchangeReturn(returnDoc);
+
+				this.clear_invoice({ preserveExchange: true });
+				this.customer = customer;
+				this.customersStore.setSelectedCustomer?.(customer);
+				this.invoiceType = "Invoice";
+				this.invoiceTypes = ["Invoice"];
+				this.toastStore.show({
+					title: __("Return credit captured. Add the replacement items."),
+					color: "success",
+				});
+				this.uiStore.triggerItemSearchFocus?.();
+			} finally {
+				this.exchangeContinuing = false;
+			}
+		},
+		cancelExchange() {
+			this.invoiceStore.clearExchange();
+			this.clear_invoice();
+			this.invoiceTypes = ["Invoice", "Order", "Quotation"];
+			this.toastStore.show({ title: __("Exchange cancelled."), color: "info" });
 		},
 		handleSetNewLine(data) {
 			this.new_line = data;

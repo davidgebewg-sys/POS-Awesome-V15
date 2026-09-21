@@ -39,6 +39,12 @@ def _load_exchange_module():
     frappe_utils.flt = lambda value, *_args, **_kwargs: float(value or 0)
     sys.modules["frappe.utils"] = frappe_utils
 
+    frappe_model = types.ModuleType("frappe.model")
+    frappe_document = types.ModuleType("frappe.model.document")
+    frappe_document.Document = type("Document", (), {})
+    sys.modules["frappe.model"] = frappe_model
+    sys.modules["frappe.model.document"] = frappe_document
+
     creation = types.ModuleType("posawesome.posawesome.api.invoice_processing.creation")
     creation.submit_invoice = lambda *args, **kwargs: None
     sys.modules[creation.__name__] = creation
@@ -56,10 +62,28 @@ def _load_exchange_module():
     return module
 
 
+def _load_pos_item_exchange_module():
+    module_name = "posawesome.posawesome.doctype.pos_item_exchange.pos_item_exchange"
+    module_path = (
+        REPO_ROOT
+        / "posawesome"
+        / "posawesome"
+        / "doctype"
+        / "pos_item_exchange"
+        / "pos_item_exchange.py"
+    )
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class TestExchangeValidation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.exchange = _load_exchange_module()
+        cls.exchange_doctype = _load_pos_item_exchange_module()
 
     def setUp(self):
         self.profile = AttrDict(
@@ -178,6 +202,98 @@ class TestExchangeValidation(unittest.TestCase):
                 sale_doc,
                 "SINV-0001",
             )
+
+    def test_cancel_exchange_reverses_linked_documents_in_dependency_order(self):
+        cancelled = []
+
+        class LinkedDoc(AttrDict):
+            def cancel(self):
+                cancelled.append((self.doctype, self.name))
+                self["docstatus"] = 2
+
+        class ExchangeDoc(AttrDict):
+            def check_permission(self, permission_type):
+                self["checked_permission"] = permission_type
+
+            def db_set(self, fieldname, value, update_modified=False):
+                self[fieldname] = value
+                self["update_modified"] = update_modified
+
+        exchange_doc = ExchangeDoc(
+            name="POS-EXCH-00001",
+            status="Completed",
+            invoice_type="Sales Invoice",
+            reconciliation_journal="JV-0001",
+            replacement_invoice="SINV-NEW",
+            return_invoice="SINV-RETURN",
+        )
+        documents = {
+            ("Journal Entry", "JV-0001"): LinkedDoc(
+                doctype="Journal Entry",
+                name="JV-0001",
+                docstatus=1,
+                flags=types.SimpleNamespace(ignore_permissions=False),
+            ),
+            ("Sales Invoice", "SINV-NEW"): LinkedDoc(
+                doctype="Sales Invoice",
+                name="SINV-NEW",
+                docstatus=1,
+                flags=types.SimpleNamespace(ignore_permissions=False),
+            ),
+            ("Sales Invoice", "SINV-RETURN"): LinkedDoc(
+                doctype="Sales Invoice",
+                name="SINV-RETURN",
+                docstatus=1,
+                flags=types.SimpleNamespace(ignore_permissions=False),
+            ),
+        }
+        frappe = sys.modules["frappe"]
+        frappe.get_doc = lambda doctype, name: (
+            exchange_doc
+            if (doctype, name) == ("POS Item Exchange", exchange_doc.name)
+            else documents[(doctype, name)]
+        )
+        frappe.db.exists = lambda doctype, name: (doctype, name) in documents
+        frappe.db.get_value = lambda doctype, name, fieldname: documents[
+            (doctype, name)
+        ].get(fieldname)
+
+        result = self.exchange_doctype.cancel_item_exchange(exchange_doc.name)
+
+        self.assertEqual(
+            cancelled,
+            [
+                ("Journal Entry", "JV-0001"),
+                ("Sales Invoice", "SINV-NEW"),
+                ("Sales Invoice", "SINV-RETURN"),
+            ],
+        )
+        self.assertEqual(exchange_doc.status, "Cancelled")
+        self.assertEqual(exchange_doc.checked_permission, "delete")
+        self.assertTrue(exchange_doc.update_modified)
+        self.assertEqual(result["status"], "Cancelled")
+        self.assertTrue(
+            all(doc.flags.ignore_permissions for doc in documents.values())
+        )
+
+    def test_delete_requires_cancelled_exchange_with_no_submitted_documents(self):
+        exchange_doc = AttrDict(
+            status="Completed",
+            invoice_type="Sales Invoice",
+            replacement_invoice="SINV-NEW",
+        )
+        with self.assertRaisesRegex(ValueError, "Cancel the item exchange"):
+            self.exchange_doctype.POSItemExchange.on_trash(exchange_doc)
+
+        exchange_doc["status"] = "Cancelled"
+        frappe = sys.modules["frappe"]
+        frappe.db.exists = lambda doctype, name: True
+        frappe.db.get_value = lambda doctype, name, fieldname: 1
+        with self.assertRaisesRegex(ValueError, "linked documents are submitted"):
+            self.exchange_doctype.POSItemExchange.on_trash(exchange_doc)
+
+        frappe.db.get_value = lambda doctype, name, fieldname: 2
+        self.exchange_doctype.POSItemExchange.on_trash(exchange_doc)
 
 
 if __name__ == "__main__":

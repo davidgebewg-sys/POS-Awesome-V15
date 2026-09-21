@@ -261,3 +261,5 @@ Rules:
 - Exchange submission must be idempotent and must not use the offline invoice outbox.
 - ERPNext/Frappe version 15 and 16 must use their supported credit-note reconciliation contract.
 - POS Invoice mode must remain disabled until an equivalent reconciliation path is verified.
+- Cancelling an exchange must reverse the reconciliation journal before cancelling the replacement and return invoices.
+- Completed exchange audit records must not be deleted until every linked submitted document has been cancelled.

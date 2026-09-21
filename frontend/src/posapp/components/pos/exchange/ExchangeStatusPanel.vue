@@ -1,5 +1,9 @@
 <template>
-	<section class="exchange-panel" :class="`exchange-panel--${stage}`" data-testid="exchange-status-panel">
+	<section
+		class="exchange-panel"
+		:class="[`exchange-panel--${stage}`, { 'exchange-panel--compact': compact }]"
+		data-testid="exchange-status-panel"
+	>
 		<div class="exchange-panel__marker" aria-hidden="true">
 			<v-icon :icon="stage === 'return' ? 'mdi-package-variant-closed-remove' : 'mdi-swap-horizontal-bold'" />
 		</div>
@@ -53,6 +57,7 @@ const props = defineProps({
 	currencySymbol: { type: String, default: "" },
 	formatAmount: { type: Function, required: true },
 	continuing: { type: Boolean, default: false },
+	compact: { type: Boolean, default: false },
 });
 
 defineEmits(["continue", "cancel"]);
@@ -127,6 +132,23 @@ const settlementLabel = computed(() =>
 	display: flex;
 	align-items: center;
 	gap: 8px;
+}
+
+.exchange-panel--compact {
+	margin: 10px 0 0;
+	padding: 10px 12px;
+	border-radius: 12px;
+	box-shadow: none;
+}
+
+.exchange-panel--compact .exchange-panel__marker {
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+}
+
+.exchange-panel--compact .exchange-panel__copy {
+	line-height: 1.2;
 }
 
 @media (max-width: 760px) {

@@ -134,6 +134,22 @@ class TestExchangeValidation(unittest.TestCase):
                 self.profile,
             )
 
+    def test_accepts_fully_closed_exchange_settlement(self):
+        return_doc = AttrDict(outstanding_amount=0)
+        sale_doc = AttrDict(outstanding_amount=0)
+        self.exchange._validate_final_settlement(return_doc, sale_doc, 1500, 1600)
+
+    def test_accepts_remaining_customer_credit(self):
+        return_doc = AttrDict(outstanding_amount=-400)
+        sale_doc = AttrDict(outstanding_amount=0)
+        self.exchange._validate_final_settlement(return_doc, sale_doc, 2000, 1600)
+
+    def test_rejects_unpaid_replacement_difference(self):
+        return_doc = AttrDict(outstanding_amount=0)
+        sale_doc = AttrDict(outstanding_amount=100)
+        with self.assertRaisesRegex(ValueError, "did not close correctly"):
+            self.exchange._validate_final_settlement(return_doc, sale_doc, 1500, 1600)
+
 
 if __name__ == "__main__":
     unittest.main()

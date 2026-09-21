@@ -28,17 +28,6 @@
 		>
 			<!-- Dynamic padding wrapper -->
 			<div class="dynamic-padding">
-				<ExchangeStatusPanel
-					v-if="exchangeSession"
-					:stage="exchangeSession.stage"
-					:return-total="exchangeSession.returnTotal || Math.abs(subtotal || 0)"
-					:sale-total="exchangeSession.stage === 'sale' ? Math.abs(subtotal || 0) : 0"
-					:currency-symbol="currencySymbol(displayCurrency)"
-					:format-amount="(value) => formatCurrency(value, displayCurrency)"
-					:continuing="exchangeContinuing"
-					@continue="continueExchangeToSale"
-					@cancel="cancelExchange"
-				/>
 				<v-alert
 					type="info"
 					density="compact"
@@ -283,6 +272,8 @@
 			:discount_percentage_offer_name="discount_percentage_offer_name"
 			:isNumber="isNumber"
 			:return_discount_meta="return_discount_meta"
+			:exchange-session="exchangeSession"
+			:exchange-continuing="exchangeContinuing"
 			@update:additional_discount="(val) => (additional_discount = val)"
 			@update:additional_discount_percentage="(val) => (additional_discount_percentage = val)"
 			@update_discount_umount="update_discount_umount"
@@ -298,6 +289,8 @@
 			@open-offers="handleOpenCounterAuxiliary('offers')"
 			@open-coupons="handleOpenCounterAuxiliary('coupons')"
 			@resume-parked-order="resume_parked_order"
+			@continue-exchange="continueExchangeToSale"
+			@cancel-exchange="cancelExchange"
 		/>
 	</div>
 </template>
@@ -316,7 +309,6 @@ import PackedItemsDialog from "./invoice/PackedItemsDialog.vue";
 import PaymentConfirmationDialog from "./payments/PaymentConfirmationDialog.vue";
 import PriceListRateDialog from "./invoice/PriceListRateDialog.vue";
 import ItemQuickEditDialog from "./items/ItemQuickEditDialog.vue";
-import ExchangeStatusPanel from "./exchange/ExchangeStatusPanel.vue";
 import { resolveItemQuickEditCodeFromRows } from "./invoice/itemQuickEditSelection";
 import invoiceItemMethods from "./invoice/invoiceItemMethods";
 import invoiceComputed from "./invoice/invoiceComputed";
@@ -498,7 +490,6 @@ export default {
 		PaymentConfirmationDialog,
 		PriceListRateDialog,
 		ItemQuickEditDialog,
-		ExchangeStatusPanel,
 	},
 	computed: {
 		isCounterGridPresentation() {

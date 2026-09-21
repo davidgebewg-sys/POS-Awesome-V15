@@ -181,6 +181,24 @@ def _reconcile_credit_note(return_doc, sale_doc, amount, profile):
     )
 
 
+def _validate_final_settlement(return_doc, sale_doc, return_total, sale_total):
+    tolerance = 0.01
+    expected_return_outstanding = -max(flt(return_total) - flt(sale_total), 0)
+    actual_return_outstanding = flt(return_doc.outstanding_amount)
+    actual_sale_outstanding = flt(sale_doc.outstanding_amount)
+
+    if (
+        abs(actual_sale_outstanding) > tolerance
+        or abs(actual_return_outstanding - expected_return_outstanding) > tolerance
+    ):
+        frappe.throw(
+            _(
+                "Exchange settlement did not close correctly. Replacement outstanding is {0} "
+                "and return credit outstanding is {1}."
+            ).format(actual_sale_outstanding, actual_return_outstanding)
+        )
+
+
 @frappe.whitelist()
 def submit_item_exchange(
     return_invoice,
@@ -268,6 +286,7 @@ def submit_item_exchange(
     reconciliation_journal = _reconcile_credit_note(return_doc, sale_doc, allocation, profile)
     return_doc.reload()
     sale_doc.reload()
+    _validate_final_settlement(return_doc, sale_doc, return_total, sale_total)
 
     difference = flt(sale_total - return_total)
     settlement_type = "Customer Payment" if difference > 0 else "Customer Credit" if difference < 0 else "Even Exchange"

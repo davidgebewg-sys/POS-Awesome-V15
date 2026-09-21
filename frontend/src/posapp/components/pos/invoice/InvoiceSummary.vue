@@ -79,6 +79,19 @@
 				</div>
 			</div>
 
+			<ExchangeStatusPanel
+				v-if="exchangeSession"
+				compact
+				:stage="exchangeSession.stage"
+				:return-total="exchangeReturnTotal"
+				:sale-total="exchangeSaleTotal"
+				:currency-symbol="currencySymbol(displayCurrency)"
+				:format-amount="(value) => formatCurrency(value, displayCurrency)"
+				:continuing="exchangeContinuing"
+				@continue="$emit('continue-exchange')"
+				@cancel="$emit('cancel-exchange')"
+			/>
+
 			<InvoiceActionButtons
 				presentation="counter-grid"
 				:pos_profile="pos_profile"
@@ -107,9 +120,10 @@
 
 		<v-row v-else dense class="summary-content">
 			<v-col
-				v-if="!useCompactSaleDock || showReturnDiscountAlert"
+				v-if="!useCompactSaleDock || showReturnDiscountAlert || exchangeSession"
 				cols="12"
 				:md="useCompactSaleDock ? 12 : 7"
+				class="invoice-summary-main"
 			>
 				<v-alert
 					v-if="showReturnDiscountAlert"
@@ -124,7 +138,7 @@
 					{{ formatCurrency(return_discount_meta.prorated_discount) }}
 				</v-alert>
 
-				<div v-if="!useCompactSaleDock" class="summary-hero">
+				<div v-if="!useCompactSaleDock || exchangeSession" class="summary-hero">
 					<div class="summary-hero__copy">
 						<span class="summary-hero__eyebrow">{{ __("Active sale") }}</span>
 						<strong class="summary-hero__amount">
@@ -199,6 +213,19 @@
 						/>
 					</div>
 				</div>
+
+				<ExchangeStatusPanel
+					v-if="exchangeSession"
+					compact
+					:stage="exchangeSession.stage"
+					:return-total="exchangeReturnTotal"
+					:sale-total="exchangeSaleTotal"
+					:currency-symbol="currencySymbol(displayCurrency)"
+					:format-amount="(value) => formatCurrency(value, displayCurrency)"
+					:continuing="exchangeContinuing"
+					@continue="$emit('continue-exchange')"
+					@cancel="$emit('cancel-exchange')"
+				/>
 			</v-col>
 
 			<v-col cols="12" :md="useCompactSaleDock ? 12 : 5" class="invoice-summary-actions">
@@ -318,6 +345,7 @@ import {
 import InvoiceActionButtons from "./InvoiceActionButtons.vue";
 import ParkedOrdersList from "./ParkedOrdersList.vue";
 import DocumentSourceSelector from "../shared/DocumentSourceSelector.vue";
+import ExchangeStatusPanel from "../exchange/ExchangeStatusPanel.vue";
 
 defineOptions({
 	name: "InvoiceSummary",
@@ -342,6 +370,8 @@ const props = defineProps({
 	discount_percentage_offer_name: [String, Number],
 	isNumber: Function,
 	return_discount_meta: Object,
+	exchangeSession: Object,
+	exchangeContinuing: Boolean,
 });
 
 const emit = defineEmits([
@@ -360,6 +390,8 @@ const emit = defineEmits([
 	"open-offers",
 	"open-coupons",
 	"resume-parked-order",
+	"continue-exchange",
+	"cancel-exchange",
 ]);
 
 const saveLoading = ref(false);
@@ -388,6 +420,12 @@ const additionalDiscountPercentageDisplay = ref(
 );
 const isCounterGrid = computed(() => props.presentation === "counter-grid");
 const useCompactSaleDock = computed(() => responsive.windowWidth.value < 1100);
+const exchangeReturnTotal = computed(() =>
+	Number(props.exchangeSession?.returnTotal || Math.abs(Number(props.subtotal || 0))),
+);
+const exchangeSaleTotal = computed(() =>
+	props.exchangeSession?.stage === "sale" ? Math.abs(Number(props.subtotal || 0)) : 0,
+);
 const showDesktopDrafts = computed(() => Boolean(responsive.isDesktop.value));
 const showReturnDiscountAlert = computed(
 	() =>

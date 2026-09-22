@@ -20,6 +20,7 @@ WORKSPACE_PATH = (
 )
 PATCHES_PATH = REPO_ROOT / "posawesome" / "patches.txt"
 MODULE_CONFIG_PATH = REPO_ROOT / "posawesome" / "config" / "pos_awesome.py"
+README_PATH = REPO_ROOT / "README.md"
 _ORIGINAL_MODULES = dict(sys.modules)
 
 
@@ -170,14 +171,17 @@ class TestPOSItemExchangeAudit(unittest.TestCase):
         self.assertTrue(
             any((block.get("data") or {}).get("card_name") == "Item Exchange" for block in content)
         )
-        self.assertIn(
-            "posawesome.patches.add_item_exchange_report_to_workspace",
-            PATCHES_PATH.read_text(encoding="utf-8").splitlines(),
-        )
+        patches = PATCHES_PATH.read_text(encoding="utf-8").splitlines()
+        patch_name = "posawesome.patches.add_item_exchange_report_to_workspace"
+        self.assertIn(patch_name, patches)
+        self.assertLess(patches.index("[post_model_sync]"), patches.index(patch_name))
         self.assertIn(
             '"name": "POS Item Exchange Audit"',
             MODULE_CONFIG_PATH.read_text(encoding="utf-8"),
         )
+        readme = README_PATH.read_text(encoding="utf-8")
+        self.assertIn("### Item Exchange", readme)
+        self.assertIn("Item Exchange Audit", readme)
 
 
 if __name__ == "__main__":

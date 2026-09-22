@@ -1,3 +1,5 @@
+[pre_model_sync]
+
 posawesome.patches.add_item_price_index
 posawesome.patches.add_composite_indexes
 posawesome.patches.add_item_fulltext_index

@@ -173,6 +173,7 @@ class TestPOSItemExchangeAudit(unittest.TestCase):
         )
         patches = PATCHES_PATH.read_text(encoding="utf-8").splitlines()
         patch_name = "posawesome.patches.add_item_exchange_report_to_workspace"
+        self.assertEqual(patches[0], "[pre_model_sync]")
         self.assertIn(patch_name, patches)
         self.assertLess(patches.index("[post_model_sync]"), patches.index(patch_name))
         self.assertIn(

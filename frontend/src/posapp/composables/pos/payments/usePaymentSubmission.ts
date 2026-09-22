@@ -1352,7 +1352,11 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			});
 
 			if (stores?.uiStore) {
-				stores.uiStore.setLastInvoice(responseInvoiceName);
+				if (isExchangeSubmission) {
+					stores.uiStore.setLastInvoice(responseInvoiceName, submittedDocument);
+				} else {
+					stores.uiStore.setLastInvoice(responseInvoiceName);
+				}
 			}
 
 			if (!waitForInvoiceProcessing) {

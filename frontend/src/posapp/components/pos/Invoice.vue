@@ -1081,7 +1081,10 @@ export default {
 							completed.exchange_status !== "Cancelled" &&
 							completed.replacement_invoice
 						) {
-							this.uiStore.setLastInvoice?.(completed.replacement_invoice);
+							this.uiStore.setLastInvoice?.(
+								completed.replacement_invoice,
+								completed,
+							);
 						}
 						this.toastStore.show({
 							title:

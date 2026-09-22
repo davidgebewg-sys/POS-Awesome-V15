@@ -12,8 +12,8 @@
 		<v-card
 			ref="invoiceCard"
 			:style="{
-				height: invoiceCardHeight,
-				maxHeight: isCounterGridPresentation ? 'none' : invoiceCardHeight,
+				height: isCounterGridPresentation ? 'auto' : invoiceHeight || 'var(--container-height)',
+				maxHeight: isCounterGridPresentation ? 'none' : invoiceHeight || 'var(--container-height)',
 				resize: !isCounterGridPresentation && canResizeInvoicePanel() ? 'vertical' : 'none',
 				overflow: isCounterGridPresentation ? 'hidden' : 'auto',
 			}"
@@ -498,13 +498,6 @@ export default {
 	computed: {
 		isCounterGridPresentation() {
 			return this.presentation === "counter-grid";
-		},
-		invoiceCardHeight() {
-			if (this.isCounterGridPresentation) return "auto";
-			const baseHeight = this.invoiceHeight || "var(--container-height)";
-			if (!this.exchangeSession) return baseHeight;
-			const reservedHeight = this.exchangeSession.stage === "sale" ? 118 : 76;
-			return `max(320px, calc(${baseHeight} - ${reservedHeight}px))`;
 		},
 		items: {
 			get() {

@@ -156,6 +156,12 @@ describe("Cart and payment visual hierarchy", () => {
 		expect(activeSaleIndex).toBeGreaterThan(-1);
 		expect(exchangePanelIndex).toBeGreaterThan(activeSaleIndex);
 		expect(invoice).not.toContain("<ExchangeStatusPanel");
+		expect(summary).toContain(
+			':format-amount="(value) => formatCurrency(value)"',
+		);
+		expect(summary).not.toContain(
+			':format-amount="(value) => formatCurrency(value, displayCurrency)"',
+		);
 	});
 
 	it("keeps the offline invoice header close control explicit and visible", () => {

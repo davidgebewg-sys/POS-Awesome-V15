@@ -249,16 +249,34 @@ const displayAmount = (value: number) => `${props.currencySymbol}${props.formatA
 }
 
 .exchange-panel--compact {
-	margin: 10px 0 0;
-	padding: 10px 12px;
+	gap: 7px;
+	margin: 7px 0 0;
+	padding: 8px 10px;
 	border-radius: 12px;
 	box-shadow: none;
 }
 
 .exchange-panel--compact .exchange-panel__marker {
-	width: 36px;
-	height: 36px;
+	width: 34px;
+	height: 34px;
 	border-radius: 10px;
+}
+
+.exchange-panel--compact .exchange-panel__header {
+	gap: 10px;
+}
+
+.exchange-panel--compact .exchange-panel__ledger {
+	gap: 6px;
+	padding-top: 6px;
+}
+
+.exchange-panel--compact .exchange-panel__metric {
+	padding: 5px 8px;
+}
+
+.exchange-panel--compact .exchange-panel__metric strong {
+	font-size: 0.88rem;
 }
 
 @media (max-width: 760px) {

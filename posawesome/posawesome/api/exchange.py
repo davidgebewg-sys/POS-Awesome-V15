@@ -101,6 +101,7 @@ def _public_result(exchange_doc, return_doc, sale_doc):
     result.update(
         {
             "exchange_reference": exchange_doc.name,
+            "exchange_status": exchange_doc.status,
             "return_invoice": return_doc.name,
             "replacement_invoice": sale_doc.name,
             "return_invoice_doc": return_doc.as_dict(),
@@ -114,6 +115,33 @@ def _public_result(exchange_doc, return_doc, sale_doc):
         }
     )
     return result
+
+
+def _authorize_existing_exchange(exchange_doc, profile):
+    if cstr(exchange_doc.company) != cstr(profile.company) or cstr(
+        exchange_doc.pos_profile
+    ) != cstr(profile.name):
+        frappe.throw(_("The item exchange does not belong to the selected POS Profile."))
+
+
+@frappe.whitelist()
+def get_item_exchange(client_request_id, pos_profile=None):
+    client_request_id = cstr(client_request_id).strip()
+    if not client_request_id:
+        return None
+
+    exchange_doc = _existing_exchange(client_request_id)
+    if not exchange_doc:
+        return None
+
+    profile = get_authorized_pos_profile(
+        pos_profile or exchange_doc.pos_profile,
+        company=exchange_doc.company,
+    )
+    _authorize_existing_exchange(exchange_doc, profile)
+    return_doc = frappe.get_doc(exchange_doc.invoice_type, exchange_doc.return_invoice)
+    sale_doc = frappe.get_doc(exchange_doc.invoice_type, exchange_doc.replacement_invoice)
+    return _public_result(exchange_doc, return_doc, sale_doc)
 
 
 def _reconcile_credit_note(return_doc, sale_doc, amount, profile):
@@ -222,12 +250,6 @@ def submit_item_exchange(
     if not client_request_id:
         frappe.throw(_("Exchange request ID is required."))
 
-    existing = _existing_exchange(client_request_id)
-    if existing:
-        return_doc = frappe.get_doc(existing.invoice_type, existing.return_invoice)
-        sale_doc = frappe.get_doc(existing.invoice_type, existing.replacement_invoice)
-        return _public_result(existing, return_doc, sale_doc)
-
     return_payload = _as_dict(return_invoice)
     sale_payload = _as_dict(sale_invoice)
     submission_data = _as_dict(data)
@@ -235,6 +257,14 @@ def submit_item_exchange(
         pos_profile,
         company=sale_payload.get("company"),
     )
+
+    existing = _existing_exchange(client_request_id)
+    if existing:
+        _authorize_existing_exchange(existing, profile)
+        return_doc = frappe.get_doc(existing.invoice_type, existing.return_invoice)
+        sale_doc = frappe.get_doc(existing.invoice_type, existing.replacement_invoice)
+        return _public_result(existing, return_doc, sale_doc)
+
     _validate_exchange_payload(return_payload, sale_payload, profile)
     _validate_original_invoice(return_payload, profile)
 

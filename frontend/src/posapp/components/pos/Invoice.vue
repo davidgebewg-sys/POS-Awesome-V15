@@ -326,6 +326,7 @@ import { getCurrentInstance, ref } from "vue";
 import { save_and_clear_invoice as saveAndClearInvoiceAction } from "./invoice_utils/actions";
 import { fetchDraftInvoices } from "../../utils/draftInvoices";
 import { getQuickCashTenderSuggestions } from "../../utils/cashTender";
+import invoiceService from "../../services/invoiceService";
 
 // Composables
 import { useOnlineStatus } from "../../composables/core/useOnlineStatus";
@@ -474,6 +475,8 @@ export default {
 			item_quick_edit_open: false,
 			item_quick_edit_item_code: "",
 			exchangeContinuing: false,
+			exchangeRecoveryKey: "",
+			exchangeDraftPersistTimer: null,
 		};
 	},
 
@@ -1046,6 +1049,128 @@ export default {
 			this.update_price_list();
 			this.fetch_available_currencies();
 			this.refresh_parked_orders();
+			void this.restorePendingExchange();
+		},
+		async restorePendingExchange() {
+			const profileName = this.pos_profile?.name;
+			const openingShiftName = this.pos_opening_shift?.name;
+			if (!profileName || !openingShiftName) return;
+
+			const recoveryKey = [frappe?.session?.user || "", profileName, openingShiftName].join("::");
+			if (this.exchangeRecoveryKey === recoveryKey) return;
+			this.exchangeRecoveryKey = recoveryKey;
+
+			const restored = this.invoiceStore.restoreExchange?.({
+				user: frappe?.session?.user,
+				posProfile: profileName,
+				company: this.pos_profile?.company,
+				openingShift: openingShiftName,
+			});
+			if (!restored) return;
+
+			if (this.isOnline && restored.clientRequestId) {
+				try {
+					const completed = await invoiceService.getExchangeByRequestId(
+						restored.clientRequestId,
+						this.pos_profile,
+					);
+					if (completed) {
+						this.invoiceStore.clearExchange();
+						if (
+							completed.exchange_status !== "Cancelled" &&
+							completed.replacement_invoice
+						) {
+							this.uiStore.setLastInvoice?.(completed.replacement_invoice);
+						}
+						this.toastStore.show({
+							title:
+								completed.exchange_status === "Cancelled"
+									? __("Recovered exchange was already cancelled")
+									: __("Item exchange was already completed"),
+							text: completed.replacement_invoice
+								? __("Replacement invoice: {0}", [completed.replacement_invoice])
+								: undefined,
+							color: completed.exchange_status === "Cancelled" ? "warning" : "success",
+						});
+						return;
+					}
+				} catch (error) {
+					console.warn("Unable to check recovered item exchange status:", error);
+				}
+			}
+
+			if (this.items.length) {
+				this.invoiceStore.clearExchange();
+				this.toastStore.show({
+					title: __("Saved exchange was not restored"),
+					text: __("The active sale was kept to prevent carts from being mixed."),
+					color: "warning",
+				});
+				return;
+			}
+
+			const draft = restored.stage === "return" ? restored.returnDraft : restored.saleDraft;
+			if (draft) {
+				await this.load_invoice(JSON.parse(JSON.stringify(draft)), {
+					preserveExchange: true,
+				});
+			} else if (restored.stage === "sale" && restored.returnDoc) {
+				await this.load_invoice(
+					{
+						doctype: "Sales Invoice",
+						company: this.pos_profile.company,
+						pos_profile: profileName,
+						customer: restored.returnDoc.customer,
+						currency: restored.returnDoc.currency || this.pos_profile.currency,
+						items: [],
+						packed_items: [],
+					},
+					{ preserveExchange: true },
+				);
+			}
+
+			if (restored.stage === "return") {
+				this.invoiceType = "Return";
+				this.invoiceTypes = ["Return"];
+			} else {
+				this.invoiceType = "Invoice";
+				this.invoiceTypes = ["Invoice"];
+			}
+
+			this.toastStore.show({
+				title: __("Item exchange restored"),
+				text:
+					restored.stage === "return"
+						? __("Review the return items and continue to the replacement sale.")
+						: __("Continue adding replacement items, then collect only the difference."),
+				color: "info",
+			});
+		},
+		scheduleExchangeDraftPersistence() {
+			if (this.exchangeDraftPersistTimer) {
+				clearTimeout(this.exchangeDraftPersistTimer);
+			}
+			this.exchangeDraftPersistTimer = setTimeout(() => {
+				this.exchangeDraftPersistTimer = null;
+				if (!this.exchangeSession) return;
+				const baseDoc = this.invoice_doc || {};
+				const draft = {
+					...JSON.parse(JSON.stringify(baseDoc)),
+					doctype: baseDoc.doctype || "Sales Invoice",
+					company: baseDoc.company || this.pos_profile?.company,
+					pos_profile: baseDoc.pos_profile || this.pos_profile?.name,
+					customer: baseDoc.customer || this.customer,
+					currency: baseDoc.currency || this.selected_currency || this.pos_profile?.currency,
+					items: JSON.parse(JSON.stringify(this.items || [])),
+					packed_items: JSON.parse(JSON.stringify(this.packed_items || [])),
+				};
+				if (this.exchangeSession.stage === "return") {
+					draft.is_return = 1;
+					this.invoiceStore.setExchangeReturnDraft?.(draft);
+				} else {
+					this.invoiceStore.setExchangeSaleDraft?.(draft);
+				}
+			}, 150);
 		},
 		async refresh_parked_orders() {
 			if (!this.pos_profile || !this.pos_opening_shift?.name) {
@@ -1145,10 +1270,15 @@ export default {
 			if (data.exchange_mode) {
 				this.invoiceStore.startExchange({
 					originalInvoice: data.return_doc,
+					returnDraft: data.invoice_doc,
 					clientRequestId:
 						typeof crypto !== "undefined" && crypto.randomUUID
 							? crypto.randomUUID()
 							: `exchange-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+					posProfile: this.pos_profile?.name,
+					company: this.pos_profile?.company,
+					openingShift: this.pos_opening_shift?.name,
+					user: frappe?.session?.user,
 				});
 			}
 			this.invoiceType = "Return";
@@ -1345,14 +1475,14 @@ export default {
 		this.loadInvoiceHeight();
 
 		this.$watch(
-			() => this.uiStore.posProfile,
-			(profile) => {
-				if (profile && profile.name) {
+			() => [this.uiStore.posProfile, this.uiStore.posOpeningShift],
+			([profile, openingShift]) => {
+				if (profile?.name) {
 					this.handleRegisterPosProfile({
 						pos_profile: profile,
 						stock_settings: this.uiStore.stockSettings,
 						company: this.uiStore.companyDoc,
-						pos_opening_shift: this.uiStore.posOpeningShift,
+						pos_opening_shift: openingShift,
 					});
 				}
 			},
@@ -1420,6 +1550,11 @@ export default {
 			{ immediate: true },
 		);
 
+		this.$watch(
+			() => this.invoiceStore.metadata.changeVersion,
+			() => this.scheduleExchangeDraftPersistence(),
+		);
+
 		this._busHandlers = {
 			add_item: this.add_item,
 			clear_invoice: this.handleClearInvoice,
@@ -1475,6 +1610,10 @@ export default {
 		if (this._suppressClosePaymentsTimer) {
 			clearTimeout(this._suppressClosePaymentsTimer);
 			this._suppressClosePaymentsTimer = null;
+		}
+		if (this.exchangeDraftPersistTimer) {
+			clearTimeout(this.exchangeDraftPersistTimer);
+			this.exchangeDraftPersistTimer = null;
 		}
 	},
 	created() {

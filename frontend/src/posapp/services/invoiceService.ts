@@ -32,6 +32,21 @@ function getSubmitInvoiceCall(
 }
 
 const invoiceService = {
+	async getExchangeByRequestId(
+		clientRequestId: string,
+		posProfile: POSProfile,
+	): Promise<any | null> {
+		return unwrapApiResult(
+			await api.callEnvelope(
+				"posawesome.posawesome.api.exchange.get_item_exchange",
+				{
+					client_request_id: clientRequestId,
+					pos_profile: posProfile.name,
+				},
+			),
+		);
+	},
+
 	submitExchange(
 		data: any,
 		saleInvoice: InvoiceDoc | string,
@@ -39,13 +54,16 @@ const invoiceService = {
 		posProfile: POSProfile,
 		clientRequestId: string,
 	): Promise<ApiEnvelope<any>> {
-		return api.callEnvelope("posawesome.posawesome.api.exchange.submit_item_exchange", {
-			data,
-			sale_invoice: saleInvoice,
-			return_invoice: returnInvoice,
-			pos_profile: posProfile.name,
-			client_request_id: clientRequestId,
-		});
+		return api.callEnvelope(
+			"posawesome.posawesome.api.exchange.submit_item_exchange",
+			{
+				data,
+				sale_invoice: saleInvoice,
+				return_invoice: returnInvoice,
+				pos_profile: posProfile.name,
+				client_request_id: clientRequestId,
+			},
+		);
 	},
 
 	submitInvoice(

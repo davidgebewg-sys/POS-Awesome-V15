@@ -263,3 +263,6 @@ Rules:
 - POS Invoice mode must remain disabled until an equivalent reconciliation path is verified.
 - Cancelling an exchange must reverse the reconciliation journal before cancelling the replacement and return invoices.
 - Completed exchange audit records must not be deleted until every linked submitted document has been cancelled.
+- An in-progress online exchange must survive a same-tab refresh without changing cashier, POS Profile, company, or opening shift scope.
+- A lost submit response must recover the completed exchange by client request ID instead of creating another return or replacement invoice.
+- Persisted exchange state must be cleared when the exchange finishes, is cancelled, expires, or belongs to a different cashier/POS scope.

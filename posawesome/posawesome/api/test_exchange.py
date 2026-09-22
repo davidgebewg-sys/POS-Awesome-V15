@@ -22,6 +22,9 @@ def tearDownModule():
 class AttrDict(dict):
     __getattr__ = dict.get
 
+    def as_dict(self):
+        return AttrDict(self)
+
 
 def _load_exchange_module():
     frappe = types.ModuleType("frappe")
@@ -202,6 +205,42 @@ class TestExchangeValidation(unittest.TestCase):
                 sale_doc,
                 "SINV-0001",
             )
+
+    def test_existing_exchange_must_match_authorized_pos_profile(self):
+        exchange_doc = AttrDict(company="Other Co", pos_profile="Other POS")
+        with self.assertRaisesRegex(ValueError, "does not belong"):
+            self.exchange._authorize_existing_exchange(exchange_doc, self.profile)
+
+    def test_recovers_completed_exchange_by_idempotency_key(self):
+        exchange_doc = AttrDict(
+            name="POS-EXCH-00001",
+            status="Completed",
+            company="Example Co",
+            pos_profile="Main POS",
+            invoice_type="Sales Invoice",
+            return_invoice="SINV-RETURN",
+            replacement_invoice="SINV-NEW",
+            return_total=50,
+            sale_total=50,
+            difference_amount=0,
+            allocated_amount=50,
+            settlement_type="Even Exchange",
+        )
+        return_doc = AttrDict(name="SINV-RETURN", items=[])
+        sale_doc = AttrDict(name="SINV-NEW", items=[])
+        frappe = sys.modules["frappe"]
+        self.exchange._existing_exchange = lambda request_id: exchange_doc
+        self.exchange.get_authorized_pos_profile = lambda *args, **kwargs: self.profile
+        frappe.get_doc = lambda doctype, name: (
+            return_doc if name == "SINV-RETURN" else sale_doc
+        )
+
+        result = self.exchange.get_item_exchange("exchange-request-1", "Main POS")
+
+        self.assertEqual(result["exchange_reference"], "POS-EXCH-00001")
+        self.assertEqual(result["exchange_status"], "Completed")
+        self.assertEqual(result["return_invoice"], "SINV-RETURN")
+        self.assertEqual(result["replacement_invoice"], "SINV-NEW")
 
     def test_cancel_exchange_reverses_linked_documents_in_dependency_order(self):
         cancelled = []

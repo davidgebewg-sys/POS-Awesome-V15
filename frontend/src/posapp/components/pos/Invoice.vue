@@ -266,6 +266,7 @@
 			:grossTotal="Total"
 			:subtotal="subtotal"
 			:displayCurrency="displayCurrency"
+			:currency-precision="currency_precision"
 			:formatFloat="formatFloat"
 			:formatCurrency="formatCurrency"
 			:currencySymbol="currencySymbol"

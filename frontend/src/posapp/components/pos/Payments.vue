@@ -399,6 +399,7 @@ import { parseBooleanSetting } from "../../utils/stock";
 import { toCompanyCurrency } from "../../utils/erpnextCurrency";
 import { focusFirstKeyboardTarget } from "../../utils/keyboardNavigation";
 import { resolveCounterGridPaymentShortcut } from "../../utils/counterGridPaymentShortcuts";
+import { getExchangeSettlement } from "../../utils/exchangeSettlement";
 
 // Components
 import PaymentSummary from "./payments/PaymentSummary.vue";
@@ -508,18 +509,17 @@ const invoice_doc = computed({
 	set: (value) => invoiceStore.setInvoiceDoc(value),
 });
 const exchangeSession = computed(() => invoiceStore.exchangeSession);
-const exchangeSettlementAmount = computed(() => {
+const exchangeSettlement = computed(() => {
 	const sale = flt(
 		invoice_doc.value?.rounded_total || invoice_doc.value?.grand_total || 0,
 		currency_precision.value,
 	);
-	return Math.abs(flt(sale - Number(exchangeSession.value?.returnTotal || 0), currency_precision.value));
+	return getExchangeSettlement(sale, exchangeSession.value?.returnTotal || 0, currency_precision.value);
 });
+const exchangeSettlementAmount = computed(() => exchangeSettlement.value.amount);
 const exchangeSettlementLabel = computed(() => {
-	const sale = flt(invoice_doc.value?.rounded_total || invoice_doc.value?.grand_total || 0);
-	return sale >= Number(exchangeSession.value?.returnTotal || 0)
-		? __("Customer pays")
-		: __("Customer credit");
+	if (exchangeSettlement.value.type === "even") return __("Even exchange");
+	return exchangeSettlement.value.type === "payment" ? __("Customer pays") : __("Customer credit");
 });
 
 const resolveBelowCostOverride = (result) => {

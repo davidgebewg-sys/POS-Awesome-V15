@@ -86,6 +86,7 @@
 				:return-total="exchangeReturnTotal"
 				:sale-total="exchangeSaleTotal"
 				:currency-symbol="currencySymbol(displayCurrency)"
+				:currency-precision="currencyPrecision"
 				:format-amount="(value) => formatCurrency(value, displayCurrency)"
 				:continuing="exchangeContinuing"
 				@continue="$emit('continue-exchange')"
@@ -221,6 +222,7 @@
 					:return-total="exchangeReturnTotal"
 					:sale-total="exchangeSaleTotal"
 					:currency-symbol="currencySymbol(displayCurrency)"
+					:currency-precision="currencyPrecision"
 					:format-amount="(value) => formatCurrency(value, displayCurrency)"
 					:continuing="exchangeContinuing"
 					@continue="$emit('continue-exchange')"
@@ -364,6 +366,7 @@ const props = defineProps({
 	grossTotal: Number,
 	subtotal: Number,
 	displayCurrency: String,
+	currencyPrecision: { type: Number, default: 2 },
 	formatFloat: Function,
 	formatCurrency: Function,
 	currencySymbol: Function,
